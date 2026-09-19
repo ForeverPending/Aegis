@@ -1,0 +1,15 @@
+# Private settings
+.env
+.env.*
+!.env.example
+
+# Local databases and logs
+*.db
+*.db-*
+*.log
+
+# Generated Python files and virtual environment
+__pycache__/
+.venv/
+
+.DS_Store
