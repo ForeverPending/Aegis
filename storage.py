@@ -1,11 +1,13 @@
-#storage for my chat bot
+# SQLite persistence for Aegis: conversation history, notes, and iMessage polling state.
 import sqlite3
 
 DB_PATH = 'chat.db'
 
+# Create the tables if they don't already exist. Safe to call on every startup.
 def init_db():
     connection = sqlite3.connect(DB_PATH)
     try:
+        # Conversation history: user messages and Aegis's replies.
         connection.execute("""
             CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY,
@@ -16,6 +18,7 @@ def init_db():
             )
         """)
 
+        # User notes, scoped per conversation.
         connection.execute("""
             CREATE TABLE IF NOT EXISTS notes(
             id INTEGER PRIMARY KEY,
@@ -25,6 +28,7 @@ def init_db():
             )
         """)
 
+        # Last processed Messages ROWID per conversation, so polling resumes where it left off.
         connection.execute("""
             CREATE TABLE IF NOT EXISTS polling_state(
                 conversation_id TEXT PRIMARY KEY NOT NULL,
@@ -34,7 +38,7 @@ def init_db():
     finally:
         connection.close()
 
-#regarding messages
+# Append one message to a conversation's history.
 def save_message(conversation_id, role, content):
     connection = sqlite3.connect(DB_PATH)
     try:
@@ -43,7 +47,7 @@ def save_message(conversation_id, role, content):
     finally:
         connection.close()
 
-
+# Return the last `limit` messages as [{'role', 'content'}], oldest first.
 def load_recent_messages(conversation_id, limit=6):
     messages = []
     connection = sqlite3.connect(DB_PATH)
@@ -65,6 +69,7 @@ def load_recent_messages(conversation_id, limit=6):
         connection.close()
     return messages
 
+# Delete all message history for a conversation. Notes are kept.
 def clear_conversation(conversation_id):
     connection = sqlite3.connect(DB_PATH)
     try:
@@ -73,11 +78,12 @@ def clear_conversation(conversation_id):
     finally:
         connection.close()
 
-#regarding notes
+# Save a note (whitespace-stripped). Raises ValueError if the note is empty.
 def save_note(conversation_id, note):
     note = note.strip()
     if note == '':
         raise ValueError('Note is empty.')
+    
     connection = sqlite3.connect(DB_PATH)
     try:
         connection.execute("""INSERT INTO notes (conversation_id,note) VALUES(?,?) """,
@@ -86,7 +92,9 @@ def save_note(conversation_id, note):
     finally:
         connection.close()
 
-def load_notes(conversation_id):
+
+# Return a conversation's notes as [{'id', 'content'}], ordered by id.
+def list_notes(conversation_id):
     notes = []
     connection = sqlite3.connect(DB_PATH)
     try:
@@ -96,26 +104,46 @@ def load_notes(conversation_id):
         """, (conversation_id,))
         rows = cursor.fetchall()
 
-        for id, note in rows:
-            notes.append((id, note))
+        for id, content in rows:
+            notes.append({'id': id, 'content': content})
     finally:
         connection.close()
     return notes
 
+# Delete a note by ID. Returns True if a note was deleted, False if none matched.
 def delete_note(conversation_id, note_id):
     connection = sqlite3.connect(DB_PATH)
-
-    
     try:
-        connection.execute("""
+        cursor = connection.execute("""
             DELETE FROM notes
             WHERE id = ?
             AND conversation_id = ?
             """, (note_id, conversation_id))
         connection.commit()
+        return cursor.rowcount > 0
     finally:
         connection.close()
 
+# Replace a note's text. Returns True if a note was updated, False if none matched.
+def update_note(conversation_id, note_id, content):
+    content = content.strip()
+    if content == '':
+        raise ValueError('Note is empty.')
+
+    connection = sqlite3.connect(DB_PATH)
+    try:
+        cursor = connection.execute("""
+            UPDATE notes
+            SET note = ?
+            WHERE id = ?
+            AND conversation_id = ?
+        """, (content, note_id, conversation_id))
+        connection.commit()
+        return cursor.rowcount > 0 
+    finally:
+        connection.close()
+
+# Return the stored last_seen_id for a conversation, or None if there is none yet.
 def load_last_seen_id(conversation_id):
     connection = sqlite3.connect(DB_PATH)
 
@@ -133,6 +161,7 @@ def load_last_seen_id(conversation_id):
     finally:
         connection.close()
 
+# Insert or update the last_seen_id for a conversation.
 def save_last_seen_id(conversation_id, last_seen_id):
     connection = sqlite3.connect(DB_PATH)
 
