@@ -153,10 +153,16 @@ if __name__ == '__main__':
             last_seen_id = 0
         storage.save_last_seen_id(conversation_id, last_seen_id)
 
+    # Send due reminders from a background thread so they aren't held up by slow model replies.
+    def send_reminder(text):
+        send_message(recipient, text)
+
+    assistant.start_reminder_thread(conversation_id, send_reminder)
+
     # Poll for new messages and reply to each in order. last_seen_id advances even if a reply
     # fails, so a failing message is skipped rather than retried forever.
     while True:
-        try: 
+        try:
             new_messages = load_new_messages(chat_id,last_seen_id)
         except sqlite3.Error:
             logging.exception("Could not read Messages database")

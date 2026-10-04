@@ -14,6 +14,10 @@ CONVERSATION_ID = os.getenv('CLI_CONVERSATION_ID')
 if not CONVERSATION_ID:
      raise ValueError('Set a CLI_CONVERSATION_ID in your .env')
 
+# Print a due reminder while input() is waiting, then redraw the prompt.
+def show_reminder(text):
+    print(f'\nAegis: {text}\nuser: ', end='', flush=True)
+
 # Read-eval-print loop: pass each input line to the assistant and print the reply.
 def main():
     logging.basicConfig(
@@ -27,6 +31,9 @@ def main():
 
     # Note: unused; handle_message() loads history itself.
     MESSAGES = storage.load_recent_messages(CONVERSATION_ID)
+
+    # Send due reminders from a background thread while waiting for input.
+    assistant.start_reminder_thread(CONVERSATION_ID, show_reminder)
 
     print('Aegis: How can I help you?')
     while True:
